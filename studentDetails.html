@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pokémon Card Scanner - Windows Webcam</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      text-align: center;
+      background: #f7f7f7;
+      padding: 20px;
+    }
+    h1 {
+      color: #ffcb05;
+      text-shadow: 1px 1px #3b4cca;
+    }
+    video {
+      width: 480px;
+      max-width: 90%;
+      border-radius: 10px;
+      margin: 10px 0;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #3b4cca;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      margin: 10px;
+      cursor: pointer;
+    }
+    #result {
+      margin-top: 20px;
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      max-width: 500px;
+      margin-left: auto;
+      margin-right: auto;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    img {
+      width: 100%;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Pokémon Card Scanner</h1>
+  <video id="webcam" autoplay playsinline></video><br>
+  <button onclick="capture()">📸 Capture & Scan</button>
+  <canvas id="canvas" style="display:none;"></canvas>
+  <div id="result"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.1/dist/tesseract.min.js"></script>
+  <script>
+    const video = document.getElementById("webcam");
+    const canvas = document.getElementById("canvas");
+    const resultDiv = document.getElementById("result");
+
+    // Start webcam (Windows, front camera by default)
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => {
+        video.srcObject = stream;
+      })
+      .catch(err => {
+        alert("Camera not accessible: " + err.message);
+      });
+
+    async function capture() {
+      resultDiv.innerHTML = "🔍 Scanning card...";
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const image = canvas.toDataURL("image/png");
+
+      // OCR with Tesseract
+      const { data: { text } } = await Tesseract.recognize(image, 'eng');
+      const lines = text.split('\n').filter(line => line.trim() !== '');
+      const cardName = lines[0]?.trim();
+
+      if (!cardName) {
+        resultDiv.innerHTML = "❌ Could not detect card name. Try again.";
+        return;
+      }
+
+      resultDiv.innerHTML = `🎯 Detected: <strong>${cardName}</strong><br>Fetching details...`;
+
+      const response = await fetch(`https://api.pokemontcg.io/v2/cards?q=name:"${encodeURIComponent(cardName)}"`);
+      const data = await response.json();
+
+      if (!data.data || data.data.length === 0) {
+        resultDiv.innerHTML = `<p>❌ No card found for "<strong>${cardName}</strong>".</p>`;
+        return;
+      }
+
+      const card = data.data[0];
+      resultDiv.innerHTML = `
+        <h2>${card.name}</h2>
+        <img src="${card.images.large}" alt="${card.name}">
+        <p><strong>HP:</strong> ${card.hp || 'N/A'}</p>
+        <p><strong>Rarity:</strong> ${card.rarity || 'N/A'}</p>
+        <p><strong>Type:</strong> ${card.types?.join(', ') || 'N/A'}</p>
+        <p><strong>Set:</strong> ${card.set?.name || 'N/A'}</p>
+      `;
+    }
+  </script>
+</body>
+</html>
+
